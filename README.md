@@ -1,4 +1,5 @@
 # 🏦 Loan Approval Predictor
+https://loan-predictor-bbkfwfupbrmpky2tuyjekr.streamlit.app/
 
 A machine learning web app that predicts whether a loan application is likely to be approved, based on applicant details such as income, credit history, loan amount and property area.
 
