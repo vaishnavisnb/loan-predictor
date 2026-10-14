@@ -97,4 +97,6 @@ results_df.to_csv("reports/model_comparison.csv", index=False)
 best_name = results_df.sort_values("F1", ascending=False).iloc[0]["Model"]
 joblib.dump(models[best_name], "models/model.pkl")
 joblib.dump(list(X.columns), "models/columns.pkl")
+# Background sample used by SHAP in the app to explain predictions
+joblib.dump(X_train.astype(float).sample(100, random_state=42), "models/background.pkl")
 print(f"\nBest model: {best_name} (saved to models/model.pkl)")

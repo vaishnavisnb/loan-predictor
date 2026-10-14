@@ -1,19 +1,46 @@
 import joblib
 import pandas as pd
+import shap
 import streamlit as st
 
 st.set_page_config(page_title="Loan Approval Predictor", page_icon="🏦")
+
+# Friendly names for the model's columns
+NICE_NAMES = {
+    "Dependents": "Dependents",
+    "ApplicantIncome": "Applicant income",
+    "CoapplicantIncome": "Coapplicant income",
+    "LoanAmount": "Loan amount",
+    "Loan_Amount_Term": "Loan term",
+    "Credit_History": "Credit history",
+    "Gender_Male": "Gender: Male",
+    "Married_Yes": "Married",
+    "Education_Not Graduate": "Education: Not graduate",
+    "Self_Employed_Yes": "Self employed",
+    "Property_Area_Semiurban": "Property: Semiurban",
+    "Property_Area_Urban": "Property: Urban",
+}
 
 
 @st.cache_resource
 def load_model():
     model = joblib.load("models/model.pkl")
     columns = joblib.load("models/columns.pkl")
-    return model, columns
+    background = joblib.load("models/background.pkl")
+    explainer = shap.Explainer(model, background)
+    return model, columns, explainer
+
+
+def get_contributions(explainer, encoded):
+    """Return a Series: how much each feature pushed the decision (+ = toward approval)."""
+    values = explainer(encoded).values
+    if values.ndim == 3:  # some models return one set of values per class
+        values = values[:, :, 1]
+    return pd.Series(values[0], index=encoded.columns)
 
 
 try:
-    model, columns = load_model()
+    model, columns, explainer = load_model()
 except FileNotFoundError:
     st.error("Model files not found. Run `python train.py` first.")
     st.stop()
@@ -62,7 +89,7 @@ if st.button("Predict", type="primary"):
     )
 
     encoded = pd.get_dummies(raw)
-    encoded = encoded.reindex(columns=columns, fill_value=0)
+    encoded = encoded.reindex(columns=columns, fill_value=0).astype(float)
 
     prediction = model.predict(encoded)[0]
     probability = model.predict_proba(encoded)[0][1]
@@ -72,6 +99,22 @@ if st.button("Predict", type="primary"):
         st.success(f"✅ Loan likely APPROVED  (approval probability: {probability:.0%})")
     else:
         st.error(f"❌ Loan likely REJECTED  (approval probability: {probability:.0%})")
-
     st.progress(float(probability))
+
+    # ---- Why did the model decide this? (SHAP) ----
+    st.subheader("Why this decision?")
+    contrib = get_contributions(explainer, encoded)
+    contrib.index = [NICE_NAMES.get(c, c) for c in contrib.index]
+    top = contrib.reindex(contrib.abs().sort_values(ascending=False).index).head(6)
+
+    st.bar_chart(top)
+    st.caption("Positive bars push toward approval, negative bars push toward rejection.")
+
+    up = top[top > 0].index.tolist()[:3]
+    down = top[top < 0].index.tolist()[:3]
+    if up:
+        st.write("👍 **Helped approval:** " + ", ".join(up))
+    if down:
+        st.write("👎 **Hurt approval:** " + ", ".join(down))
+
     st.caption("This is a demo built on a small public dataset. It is not real financial advice.")
